@@ -97,6 +97,86 @@ This is a *design and evaluation question*, not an established literature gap. E
 - **Constrained mode:** one-at-a-time jobs, small datasets, low parallelism, no optional Hive/Pig/Spark, no large public dataset.
 - Actual memory use depends heavily on selected images and JVM heap configuration; measure during Phase 4.
 
+## 8a. Verified hardware audit results (2026-10-26)
+
+Read-only PowerShell/WMI verification:
+- Total physical RAM: 16,455,815,168 bytes ≈ 15.32 GB installed (≈16 GB) — PASS
+- CPU: AMD Ryzen 7 5700U with Radeon Graphics, 8 cores / 16 logical processors — PASS
+- Free disk on C: (repository drive): 69,328,719,872 bytes ≈ 64.6 GB free; 441,470,394,368 bytes used — PASS
+- Hardware virtualization: WSL 2 (kernel 6.6.8) and Docker Desktop Linux containers demonstrated operational earlier; `VMMonitorModeExtensions` WMI property reads `False` on AMD (known ambiguous/unreliable on AMD; not conclusive). Caveat: availability is inferred from prior successful WSL 2/Docker Linux operation, not re-verified in this session. — PASS (with caveat)
+
+## 8b. Docker smoke test results (2026-10-26)
+
+Read-only disposable-container verification (no MongoDB, no Hadoop, no application code):
+
+- docker info: ServerVersion=29.9.2, OSType=linux, Architecture=x86_64, KernelVersion=6.6.87.2-microsoft-standard-WSL2, OS=linux — PASS
+- Image: alpine:3.20 (digest sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc)
+- Command: docker run --rm --name datadesk-smoke-test alpine:3.20 sh -c "echo smoke-ok && exit 0"
+- Output: smoke-ok; container exited 0; removed by --rm; confirmed absent in `docker ps -a` — PASS
+- No images, volumes, or other containers pruned or touched. Unrelated pre-existing containers (neuroscan_*, synth_patient_api) left untouched.
+
+## 8c. MongoDB smoke test results (2026-10-26)
+
+Disposable-container verification using official image (no Hadoop, no application code):
+
+- docker info: Server=29.9.2 OS=linux Arch=x86_64 Containers=4 Running=0 — PASS
+- Image: docker.io/library/mongo:7, digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7
+- Container: datadesk-mongo-smoke-test, bound to 127.0.0.1:27017 (localhost only)
+- Readiness: mongosh ping succeeded on attempt 1 — PASS
+- Insert (db datadesk_smoke_test, collection smoke_test): acknowledged:true, insertedId ObjectId('6adf0c9f3dc90845b5119019') — PASS
+- Read: document returned matching testId 'datadesk-smoke' — PASS
+- Delete: acknowledged:true, deletedCount:1 — PASS
+- Verify deletion: findOne returned null — PASS
+- Cleanup: docker rm -f datadesk-mongo-smoke-test; confirmed absent in docker ps -a; unrelated containers untouched — PASS
+
+## 8d. Hadoop image research and compatibility smoke test results (2026-10-26)
+
+### Candidate research (before running)
+- Selected image: `apache/hadoop:3.5.0` — official image published by The Apache Software Foundation (hub.docker.com/r/apache/hadoop, "By The Apache Software Foundation", Sponsored OSS, 1M+ pulls, updated 6 months ago).
+- Source repository: https://gitbox.apache.org/repos/asf/hadoop.git (linked from official Hadoop docs).
+- License: Apache License 2.0 (ASF project).
+- Hadoop version: 3.5.0 (first stable 3.5 line release, 2026-04-02) — matches Architecture.md §7 version candidate.
+- Java: 17.0.18 (openjdk), JAVA_HOME=/opt/java/openjdk — satisfies Hadoop 3.5.0 server-side Java 17 requirement (Architecture.md §7).
+- Resolved image digest: sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 (linux/amd64, 758.76 MB).
+- Alternatives considered and rejected: crs4/hadoop (max 3.2.1, Java 8, community, older), bde2020/hadoop (3.2.1, Java 8, older) — predate the Java 17 requirement.
+- Compatibility concern noted: official image is designed for multi-node docker-compose (one daemon per container); used a single pseudo-distributed container (NameNode + DataNode + ResourceManager + NodeManager) per Architecture.md §7 simplest-first-build allowance. Image entrypoint `/opt/starter.sh` only configures and executes "$@" — daemons started manually via `hdfs --daemon start` / `yarn --daemon start`.
+
+### Disposable compatibility test (container `datadesk-hadoop-smoke-test`, localhost-bound, removed after test)
+- Prerequisite: namenode formatted via `hdfs namenode -format -nonInteractive` — PASS
+- Daemons running (jps): NameNode 216, DataNode 304, ResourceManager 393, NodeManager 553 — PASS
+- Image tag: docker.io/apache/hadoop:3.5.0; resolved digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12
+- Hadoop version reported: Hadoop 3.5.0, source repo https://github.com/apache/hadoop.git -r dbcc7cd797100e6b32cd84f85b53a5193a5f9af0, compiled 2026-03-24
+- HDFS mkdir `/datadesk-smoke-test`: PASS
+- HDFS put `smoke-input.txt` (65 bytes): PASS
+- HDFS list `/datadesk-smoke-test/`: PASS (1 item, 65 bytes)
+- HDFS get `smoke-input.txt` to local, content identical to input (diff match): PASS
+- HDFS delete `-r /datadesk-smoke-test`: PASS (path reports "No such file or directory" after delete)
+- MapReduce wordcount (genuine, via YARN): `hadoop jar /opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.5.0.jar wordcount /mr-smoke-input /mr-smoke-output`
+  - Input: 4 lines / 48 bytes (hello world, hello hadoop, world test, hello world)
+  - Job counters: 1 map, 1 reduce, bytes read 48, bytes written 32, no shuffle errors — PASS
+  - Output `_SUCCESS` present + part-r-00000: `hadoop 1`, `hello 3`, `test 1`, `world 3` — correct and deterministic — PASS
+- HDFS test data cleaned (`/mr-smoke-output`, `/mr-smoke-input` removed): PASS
+- Cleanup: `docker rm -f datadesk-hadoop-smoke-test`; container absent in `docker ps -a`; unrelated containers (neuroscan_*, synth_patient_api) untouched — PASS
+
+No images, volumes, or other containers pruned. No backend implemented. No long-running stack started.
+
+## 8e. Evidence boundary — verified smoke tests vs untested application integration (2026-10-26)
+
+**Verified smoke-test results (disposable containers, localhost-only, removed after test):**
+- Docker daemon reachable; pinned `alpine:3.20` container ran `echo smoke-ok`, exited 0, removed by `--rm`, confirmed absent in `docker ps -a` (§8b).
+- MongoDB `mongo:7` on 127.0.0.1:27017 (digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7): mongosh ping, insert, read, delete, verify-delete all PASS; container removed with `docker rm -f` (§8c).
+- Hadoop `apache/hadoop:3.5.0` (digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12; Java 17.0.18): NameNode/DataNode/ResourceManager/NodeManager running; HDFS mkdir/put/list/get/delete PASS with byte-identical get verification; genuine MapReduce wordcount via YARN PASS (`hello 3, world 3, hadoop 1, test 1`, `_SUCCESS` present); HDFS test data cleaned; container removed with `docker rm -f` (§8d).
+
+**Untested / not implemented (application integration — do not claim as verified):**
+- WebHDFS upload and byte/checksum verification behavior — not confirmed; WebHDFS is a conditional choice only, with the smoke-tested Hadoop CLI adapter as fallback.
+- Node.js 22 LTS + TypeScript + Express 5 backend — not implemented, not smoke-tested as a service stack.
+- Official MongoDB Node.js driver usage in application code — not implemented.
+- Docker Compose multi-service startup and persistence across restart — not verified (P4 restart-persistence check pending).
+- Vitest + Supertest tests — not written.
+- Any backend application integration with MongoDB, HDFS, or Hadoop — not started.
+
+No application code was written, no dependencies were installed, and no services were started beyond the disposable smoke-test containers above, all of which were removed after testing.
+
 ## 9. Decisions log
 
 | Decision | Status | Rationale |
@@ -108,22 +188,30 @@ This is a *design and evaluation question*, not an established literature gap. E
 | Provenance is a research hypothesis, not proven novelty | Accepted | General provenance is well established by W3C PROV and workflow research. |
 | Hive, Pig, Spark, ML are optional | Accepted | Keeps core feasible while acknowledging syllabus topics. |
 | No app implementation in this assignment | Accepted | User explicitly requires six-file specification first. |
+| Backend stack: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver, Vitest + Supertest | Proposed | Lightweight single-backend baseline per rules.md §5; no microservices/Redis/Kafka/K8s/ORM; pin versions at implementation. Application integration not implemented or smoke-tested. |
+| MongoDB image: `mongo:7` digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7 | Verified (2026-10-26, §8c) | Official image; insert/read/delete/verify-delete on localhost:27017 all PASS; container removed after test. |
+| Hadoop image: `apache/hadoop:3.5.0` digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | Verified (2026-10-26, §8d) | Official ASF image, Apache 2.0, Java 17.0.18; daemons, HDFS CLI CRUD, and MapReduce wordcount via YARN PASS; container removed after test. |
+| WebHDFS as HDFS client | Proposed / unverified | Use only if upload + byte/checksum verification behavior confirmed by test; CLI adapter is verified fallback. |
 
 ## 10. Unresolved questions
 
-1. What are the actual Windows edition/build, CPU, RAM, free disk, WSL version, and Docker Desktop version?
-2. Which maintained Hadoop container image has acceptable license, provenance, update cadence, and Java compatibility?
-3. Which frontend/backend language is most maintainable for the developer and testing workflow?
+1. What are the actual Windows edition/build, CPU, RAM, free disk, WSL version, and Docker Desktop version? — PARTIALLY ANSWERED: Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1. Virtualization caveat: WMI `VMMonitorModeExtensions` reads `False` on this AMD CPU (ambiguous, not conclusive); availability inferred from prior successful WSL 2/Docker Linux operation in Step 0, not re-verified in this session.
+2. Which maintained Hadoop container image has acceptable license, provenance, update cadence, and Java compatibility? — ANSWERED: `apache/hadoop:3.5.0`, digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12, Apache License 2.0, Java 17.0.18, verified by smoke test 2026-10-26 (§8d).
+3. Which frontend/backend language is most maintainable for the developer and testing workflow? — ANSWERED (proposed, not implemented): Node.js 22 LTS + TypeScript with Express 5 REST API and official MongoDB Node.js driver; Vitest + Supertest for tests. Not smoke-tested as a service stack; application integration not started.
 4. Which public dataset has a clear reuse license and useful group/count analytics?
 5. Which 3–5 comparable workflow/provenance platforms are closest to the proposed student UX?
 6. Does a literature search reveal a directly comparable integrated workspace that makes the current contribution redundant?
+7. WebHDFS upload + byte/checksum verification behavior — unconfirmed. Conditional choice only; Hadoop CLI adapter is the verified fallback pending a WebHDFS confirmation test.
 
 ## 11. Current progress
 
 - Phase 0 source audit: syllabus located and fully read; mandatory activities extracted.
+- Phase 0 hardware audit: complete — Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1 daemon reachable earlier. Virtualization caveat recorded (WMI `VMMonitorModeExtensions` reads `False` on AMD; ambiguous, inferred from prior WSL 2/Docker Linux operation).
 - Phase 1: initial mixed bibliography and provisional gap drafted; full peer-reviewed literature review and comparable-system search remain pending.
-- Phases 2–5: specifications drafted in six files; user review and host/image compatibility verification remain pending.
-- Application implementation: **not started**.
+- Phase 4 smoke tests (2026-10-26, disposable containers only): Docker daemon + `alpine:3.20` PASS (§8b); MongoDB `mongo:7` CRUD PASS (§8c); Hadoop `apache/hadoop:3.5.0` daemons + HDFS CLI CRUD + MapReduce wordcount PASS (§8d). Images pinned by digest. Container restart-persistence check still pending.
+- Backend stack proposed: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver with MongoDB 7; Vitest + Supertest for tests; Docker Compose for local services; WebHDFS conditional/unverified (CLI adapter fallback verified). Application integration NOT implemented, NOT smoke-tested.
+- Phases 2–3, 5: specification drafting continues in the six files.
+- Application implementation: **not started**. No code written, no dependencies installed, no services started beyond disposable smoke-test containers (all removed after testing).
 
 ## 12. Bibliography access dates
 

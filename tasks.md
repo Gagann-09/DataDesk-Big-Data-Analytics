@@ -20,11 +20,27 @@
 
 **Gate P0:** source file read; scope matches syllabus. **Status: PASS** for document audit.
 
-### P0.2 Hardware and host audit — pending user-machine verification
-- [ ] Capture Windows edition/build, CPU model/logical processors, installed RAM, free disk, virtualization state, WSL version, Docker Desktop version.
-- [ ] Run `wsl --version`, `docker version`, `docker compose version`, and `docker info` from PowerShell.
-- [ ] Confirm Linux containers can start and stop.
-- [ ] Estimate disk headroom for images, volumes, fixtures, and generated outputs.
+### Mandatory work order (approved Phase 1 exception)
+1. Compatibility checks (Phase 4 smoke test: MongoDB health, HDFS put/get/delete, YARN job submission, MapReduce output retrieval, clean restart) — must pass before any stack decision.
+2. Minimal backend stack decision — choose language/framework and Hadoop image only after compatibility evidence; do not select without evidence.
+3. Phase 1 ingestion (`backend-dataset-ingestion`) — only after steps 1 and 2 pass.
+
+### P0.2 Hardware and host audit — complete (read-only verification, 2026-10-26)
+- [x] Captured Windows edition/build, CPU model/logical processors, installed RAM, free disk, virtualization state, WSL version, Docker Desktop version.
+- [x] Ran `wsl --version`, `docker version`, `docker compose version`, and `docker info` from PowerShell.
+- [x] Confirm Linux containers can start and stop. — PASS (2026-10-26): ran pinned `alpine:3.20` container `docker run --rm --name datadesk-smoke-test alpine:3.20 sh -c "echo smoke-ok && exit 0"`; output `smoke-ok`; container exited 0; `--rm` removed it; confirmed absent in `docker ps -a`.
+- [x] Estimated disk headroom: ~64.6 GB free on C: — sufficient for baseline planning.
+- [x] MongoDB smoke test — PASS (2026-10-26): started pinned `mongo:7` (digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7) on localhost:27017; insert/read/delete/verify-delete of one test document in `datadesk_smoke_test.smoke_test` all succeeded; container removed with `docker rm -f`; unrelated containers untouched.
+- [x] Hadoop image research + compatibility smoke test — PASS (2026-10-26): selected official `apache/hadoop:3.5.0` (digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12, Java 17.0.18, Apache License 2.0, source gitbox.apache.org/repos/asf/hadoop.git). Ran disposable pseudo-distributed container `datadesk-hadoop-smoke-test`: namenode formatted; NameNode/DataNode/ResourceManager/NodeManager running; HDFS mkdir/put/list/get/delete all PASS (content verified identical on get); genuine MapReduce wordcount via YARN PASS (`hello 3, world 3, hadoop 1, test 1`, `_SUCCESS` present); HDFS test data cleaned; container removed with `docker rm -f`; unrelated containers untouched.
+
+Verified results:
+- OS: Windows 10.0.26300.9711
+- CPU: AMD Ryzen 7 5700U with Radeon Graphics, 8 cores / 16 logical processors
+- RAM: 16,455,815,168 bytes ≈ 15.32 GB installed (≈16 GB)
+- Free disk (C:, repository drive): 69,328,719,872 bytes ≈ 64.6 GB free; 441,470,394,368 bytes used
+- WSL: 2.6.3.0, kernel 6.6.8.7.2-1; distro `docker-desktop` version 2
+- Docker Desktop: engine 29.9.2, Compose v5.6.1; daemon reachable (linux x86_64) earlier in session
+- Virtualization: WSL 2 + Docker Linux containers demonstrated operational in Step 0; WMI `VMMonitorModeExtensions` reads `False` on this AMD CPU (known ambiguous/unreliable on AMD; not conclusive against virtualization). Caveat recorded: availability is inferred from prior successful WSL 2/Docker Linux operation, not re-verified in this session.
 
 **Gate P0-HW:** do not finalize data sizes until hardware is recorded. Minimum Docker documentation baseline is 8 GB RAM, SLAT-capable 64-bit CPU, and BIOS/UEFI virtualization; 16 GB is a planning preference, not an official minimum [W1].
 
@@ -75,20 +91,27 @@
 ## Phase 4 — Technical architecture and Windows deployment verification
 
 ### P4.1 Version/image compatibility spike (disposable environment only)
-- [ ] Verify supported Windows version, WSL 2, virtualization, and Docker Desktop licensing for intended use.
-- [ ] Choose exact Hadoop image/release, Java runtime, MongoDB Community image, and frontend/backend runtime.
-- [ ] Record licenses, image publisher, tags, digests, release notes, and compatibility evidence.
-- [ ] Run MongoDB health check and create/read/delete a test record.
-- [ ] Run HDFS mkdir, put, list, get, compare checksum, and delete.
-- [ ] Compile and execute a real MapReduce word-count or grouped-count job; verify output.
-- [ ] Restart containers and verify intended persistence.
+- [x] Verify supported Windows version, WSL 2, virtualization, and Docker Desktop licensing for intended use — host/hardware recorded in `memory.md` §8a; Docker Desktop 29.9.2 / Compose v5.6.1; virtualization caveat recorded (WMI ambiguous on AMD, inferred from prior WSL 2/Docker Linux operation).
+- [x] Choose exact Hadoop image/release, Java runtime: `apache/hadoop:3.5.0` (Java 17.0.18) selected after provenance/license review — PASS (image digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12; license Apache 2.0; publisher The Apache Software Foundation; evidence in `memory.md` §8d).
+- [x] MongoDB image chosen: `mongo:7` — PASS (digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7; insert/read/delete/verify-delete verified on localhost:27017; evidence in `memory.md` §8c).
+- [x] Record licenses, image publisher, tags, digests, release notes, and compatibility evidence — recorded in `memory.md` §8b–§8d.
+- [x] Run MongoDB health check and create/read/delete a test record — PASS (see `memory.md` §8c).
+- [x] Run HDFS mkdir, put, list, get, delete — PASS (content verified identical on get via diff; equivalent to checksum verification for this disposable test; see `memory.md` §8d).
+- [x] Execute a real MapReduce word-count job via YARN; verify output — PASS (hadoop-mapreduce-examples-3.5.0.jar wordcount; output `hello 3, world 3, hadoop 1, test 1`, `_SUCCESS` present; see `memory.md` §8d).
+- [ ] Restart containers and verify intended persistence — pending.
 
 ### P4.2 Operational safety
 - [ ] Test service unavailability, job timeout, nonzero exit, output missing, and interrupted upload.
 - [ ] Verify all host ports bind to loopback unless a specific local-only exception is justified.
 - [ ] Confirm path guard rejects traversal and paths outside `/datadesk/`.
 
-**Gate P4:** a fresh checkout can run the documented smoke test; no unverified compatibility claims remain; chosen images are pinned. If this fails, stop and revise architecture before implementation.
+### P4.3 Backend stack decision (proposed after Phase 4 evidence)
+- Chosen baseline: Node.js 22 LTS + TypeScript; Express 5 REST API; official MongoDB Node.js driver with MongoDB 7; Apache Hadoop 3.5.0 (image `apache/hadoop:3.5.0`, digest pinned); Docker Compose for local services; Vitest + Supertest for tests.
+- Constraints: one backend; no microservices, Redis, Kafka, Kubernetes, or unnecessary ORM; backend is the only layer orchestrating MongoDB/HDFS/Hadoop (rules.md §5).
+- Conditional: WebHDFS for the HDFS adapter only if required upload and byte/checksum verification behavior is confirmed by test; Hadoop CLI adapter is the smoke-tested fallback.
+- Status: **proposed**. Application integration not implemented, not smoke-tested, not started. Pin exact dependency versions at implementation (Phase 5 / I1); never `latest`.
+
+**Gate P4:** a fresh checkout can run the documented smoke test; chosen images are pinned; no unverified compatibility claims remain for images. The proposed backend stack is not smoke-tested as a service stack and must not be claimed as verified.
 
 ## Phase 5 — Directory structure, implementation plan, and test strategy
 
@@ -96,6 +119,7 @@
 - [ ] Create repository layout from the accepted Architecture.md.
 - [ ] Keep frontend, backend, Hadoop jobs, deployment, fixtures, docs, and tests logically separated without splitting into microservices.
 - [ ] Add `.env.example`, Compose file, pinned dependencies, license inventory, and ignore rules.
+- [ ] Document pinned baseline stack in the repository: Node.js 22 LTS + TypeScript, Express 5, official MongoDB Node.js driver, MongoDB 7, apache/hadoop:3.5.0 (digest pinned), mongo:7 (digest pinned), Docker Compose, Vitest + Supertest. Pin exact versions at implementation; never `latest`.
 
 ### P5.2 Define test pyramid
 - [ ] Unit tests: parser, checksum, canonicalization, path guard, state transitions, job parameter validation.
