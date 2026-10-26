@@ -20,11 +20,25 @@
 
 **Gate P0:** source file read; scope matches syllabus. **Status: PASS** for document audit.
 
-### P0.2 Hardware and host audit — pending user-machine verification
-- [ ] Capture Windows edition/build, CPU model/logical processors, installed RAM, free disk, virtualization state, WSL version, Docker Desktop version.
-- [ ] Run `wsl --version`, `docker version`, `docker compose version`, and `docker info` from PowerShell.
-- [ ] Confirm Linux containers can start and stop.
-- [ ] Estimate disk headroom for images, volumes, fixtures, and generated outputs.
+### Mandatory work order (approved Phase 1 exception)
+1. Compatibility checks (Phase 4 smoke test: MongoDB health, HDFS put/get/delete, YARN job submission, MapReduce output retrieval, clean restart) — must pass before any stack decision.
+2. Minimal backend stack decision — choose language/framework and Hadoop image only after compatibility evidence; do not select without evidence.
+3. Phase 1 ingestion (`backend-dataset-ingestion`) — only after steps 1 and 2 pass.
+
+### P0.2 Hardware and host audit — complete (read-only verification, 2026-10-26)
+- [x] Captured Windows edition/build, CPU model/logical processors, installed RAM, free disk, virtualization state, WSL version, Docker Desktop version.
+- [x] Ran `wsl --version`, `docker version`, `docker compose version`, and `docker info` from PowerShell.
+- [ ] Confirm Linux containers can start and stop. — NOT MEASURED (containers not started in this session; earlier Step 0 verified the Docker daemon reachable, `29.9.2 linux x86_64`)
+- [x] Estimated disk headroom: ~64.6 GB free on C: — sufficient for baseline planning.
+
+Verified results:
+- OS: Windows 10.0.26300.9711
+- CPU: AMD Ryzen 7 5700U with Radeon Graphics, 8 cores / 16 logical processors
+- RAM: 16,455,815,168 bytes ≈ 15.32 GB installed (≈16 GB)
+- Free disk (C:, repository drive): 69,328,719,872 bytes ≈ 64.6 GB free; 441,470,394,368 bytes used
+- WSL: 2.6.3.0, kernel 6.6.8.7.2-1; distro `docker-desktop` version 2
+- Docker Desktop: engine 29.9.2, Compose v5.6.1; daemon reachable (linux x86_64) earlier in session
+- Virtualization: WSL 2 + Docker Linux containers demonstrated operational in Step 0; WMI `VMMonitorModeExtensions` reads `False` on this AMD CPU (known ambiguous/unreliable on AMD; not conclusive against virtualization). Caveat recorded: availability is inferred from prior successful WSL 2/Docker Linux operation, not re-verified in this session.
 
 **Gate P0-HW:** do not finalize data sizes until hardware is recorded. Minimum Docker documentation baseline is 8 GB RAM, SLAT-capable 64-bit CPU, and BIOS/UEFI virtualization; 16 GB is a planning preference, not an official minimum [W1].
 

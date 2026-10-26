@@ -108,7 +108,7 @@ Every run must record dataset version ID and checksum, job ID/version, normalize
 
 ## 11. Change discipline
 
-- Do not implement during Phases 0–5.
+- Do not implement during Phases 0–5 except the approved, controlled Phase 1 backend-dataset-ingestion exception on branch `phase-1/backend-dataset-ingestion`. Phase 1 ingestion is limited to dataset ingestion work and must not bypass the mandatory work order: compatibility checks → minimal backend stack decision → Phase 1 ingestion.
 - Keep each task bounded and tied to a PRD requirement or decision ID.
 - Before architecture-changing work, update Architecture.md and explain the trade-off.
 - Update tasks.md when dependencies or acceptance gates change.

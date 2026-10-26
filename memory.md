@@ -97,6 +97,14 @@ This is a *design and evaluation question*, not an established literature gap. E
 - **Constrained mode:** one-at-a-time jobs, small datasets, low parallelism, no optional Hive/Pig/Spark, no large public dataset.
 - Actual memory use depends heavily on selected images and JVM heap configuration; measure during Phase 4.
 
+## 8a. Verified hardware audit results (2026-10-26)
+
+Read-only PowerShell/WMI verification:
+- Total physical RAM: 16,455,815,168 bytes ≈ 15.32 GB installed (≈16 GB) — PASS
+- CPU: AMD Ryzen 7 5700U with Radeon Graphics, 8 cores / 16 logical processors — PASS
+- Free disk on C: (repository drive): 69,328,719,872 bytes ≈ 64.6 GB free; 441,470,394,368 bytes used — PASS
+- Hardware virtualization: WSL 2 (kernel 6.6.8) and Docker Desktop Linux containers demonstrated operational earlier; `VMMonitorModeExtensions` WMI property reads `False` on AMD (known ambiguous/unreliable on AMD; not conclusive). Caveat: availability is inferred from prior successful WSL 2/Docker Linux operation, not re-verified in this session. — PASS (with caveat)
+
 ## 9. Decisions log
 
 | Decision | Status | Rationale |
@@ -111,7 +119,7 @@ This is a *design and evaluation question*, not an established literature gap. E
 
 ## 10. Unresolved questions
 
-1. What are the actual Windows edition/build, CPU, RAM, free disk, WSL version, and Docker Desktop version?
+1. What are the actual Windows edition/build, CPU, RAM, free disk, WSL version, and Docker Desktop version? — PARTIALLY ANSWERED: Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1. Virtualization caveat: WMI `VMMonitorModeExtensions` reads `False` on this AMD CPU (ambiguous, not conclusive); availability inferred from prior successful WSL 2/Docker Linux operation in Step 0, not re-verified in this session.
 2. Which maintained Hadoop container image has acceptable license, provenance, update cadence, and Java compatibility?
 3. Which frontend/backend language is most maintainable for the developer and testing workflow?
 4. Which public dataset has a clear reuse license and useful group/count analytics?
@@ -121,6 +129,7 @@ This is a *design and evaluation question*, not an established literature gap. E
 ## 11. Current progress
 
 - Phase 0 source audit: syllabus located and fully read; mandatory activities extracted.
+- Phase 0 hardware audit: complete — Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1 daemon reachable earlier. Virtualization caveat recorded (WMI `VMMonitorModeExtensions` reads `False` on AMD; ambiguous, inferred from prior WSL 2/Docker Linux operation).
 - Phase 1: initial mixed bibliography and provisional gap drafted; full peer-reviewed literature review and comparable-system search remain pending.
 - Phases 2–5: specifications drafted in six files; user review and host/image compatibility verification remain pending.
 - Application implementation: **not started**.
