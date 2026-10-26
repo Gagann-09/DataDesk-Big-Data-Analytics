@@ -28,7 +28,7 @@
 ### P0.2 Hardware and host audit — complete (read-only verification, 2026-10-26)
 - [x] Captured Windows edition/build, CPU model/logical processors, installed RAM, free disk, virtualization state, WSL version, Docker Desktop version.
 - [x] Ran `wsl --version`, `docker version`, `docker compose version`, and `docker info` from PowerShell.
-- [ ] Confirm Linux containers can start and stop. — NOT MEASURED (containers not started in this session; earlier Step 0 verified the Docker daemon reachable, `29.9.2 linux x86_64`)
+- [x] Confirm Linux containers can start and stop. — PASS (2026-10-26): ran pinned `alpine:3.20` container `docker run --rm --name datadesk-smoke-test alpine:3.20 sh -c "echo smoke-ok && exit 0"`; output `smoke-ok`; container exited 0; `--rm` removed it; confirmed absent in `docker ps -a`.
 - [x] Estimated disk headroom: ~64.6 GB free on C: — sufficient for baseline planning.
 
 Verified results:

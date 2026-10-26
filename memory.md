@@ -105,6 +105,16 @@ Read-only PowerShell/WMI verification:
 - Free disk on C: (repository drive): 69,328,719,872 bytes ≈ 64.6 GB free; 441,470,394,368 bytes used — PASS
 - Hardware virtualization: WSL 2 (kernel 6.6.8) and Docker Desktop Linux containers demonstrated operational earlier; `VMMonitorModeExtensions` WMI property reads `False` on AMD (known ambiguous/unreliable on AMD; not conclusive). Caveat: availability is inferred from prior successful WSL 2/Docker Linux operation, not re-verified in this session. — PASS (with caveat)
 
+## 8b. Docker smoke test results (2026-10-26)
+
+Read-only disposable-container verification (no MongoDB, no Hadoop, no application code):
+
+- docker info: ServerVersion=29.9.2, OSType=linux, Architecture=x86_64, KernelVersion=6.6.87.2-microsoft-standard-WSL2, OS=linux — PASS
+- Image: alpine:3.20 (digest sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc)
+- Command: docker run --rm --name datadesk-smoke-test alpine:3.20 sh -c "echo smoke-ok && exit 0"
+- Output: smoke-ok; container exited 0; removed by --rm; confirmed absent in `docker ps -a` — PASS
+- No images, volumes, or other containers pruned or touched. Unrelated pre-existing containers (neuroscan_*, synth_patient_api) left untouched.
+
 ## 9. Decisions log
 
 | Decision | Status | Rationale |
