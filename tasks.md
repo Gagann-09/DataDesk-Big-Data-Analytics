@@ -108,10 +108,10 @@ Verified results:
 ### P4.3 Backend stack decision (proposed after Phase 4 evidence)
 - Chosen baseline: Node.js 22 LTS + TypeScript; Express 5 REST API; official MongoDB Node.js driver with MongoDB 7; Apache Hadoop 3.5.0 (image `apache/hadoop:3.5.0`, digest pinned); Docker Compose for local services; Vitest + Supertest for tests.
 - Constraints: one backend; no microservices, Redis, Kafka, Kubernetes, or unnecessary ORM; backend is the only layer orchestrating MongoDB/HDFS/Hadoop (rules.md §5).
-- Conditional: WebHDFS for the HDFS adapter only if required upload and byte/checksum verification behavior is confirmed by test; Hadoop CLI adapter is the smoke-tested fallback.
+- HDFS client decision (evidence-based): WebHDFS upload + byte/checksum verification behavior **confirmed by test** 2026-10-26 (§8e in `memory.md`): MKDIRS under `/datadesk/`, HTTP PUT upload, byte-exact read-back with independent SHA-256 (MATCH), LISTSTATUS, DELETE file, DELETE directory recursive — all PASS via WebHDFS HTTP API. Caveats: image ships with empty `core-site.xml`/`hdfs-site.xml` (must configure `fs.defaultFS`, HTTP bind addresses, `dfs.webhdfs.enabled=true` before the NameNode starts); WebHDFS defaults to the calling OS user, so the backend must pass `?user.name=hadoop` or run as a user with `/datadesk/` write permission; CREATE/OPEN redirects target the datanode by container hostname (reachable from inside the container network; a host-based backend needs datanode ports mapped or a proxy). Hadoop CLI adapter remains the smoke-tested fallback.
 - Status: **proposed**. Application integration not implemented, not smoke-tested, not started. Pin exact dependency versions at implementation (Phase 5 / I1); never `latest`.
 
-**Gate P4:** a fresh checkout can run the documented smoke test; chosen images are pinned; no unverified compatibility claims remain for images. The proposed backend stack is not smoke-tested as a service stack and must not be claimed as verified.
+**Gate P4:** a fresh checkout can run the documented smoke test; chosen images are pinned; no unverified compatibility claims remain for images (Hadoop `apache/hadoop:3.5.0` and MongoDB `mongo:7` verified by digest; WebHDFS verified with documented caveats). The proposed backend stack is not smoke-tested as a service stack and must not be claimed as verified.
 
 ## Phase 5 — Directory structure, implementation plan, and test strategy
 

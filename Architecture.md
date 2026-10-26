@@ -261,7 +261,7 @@ A run is successful only when the process exits successfully and required output
 - Docker Desktop: current supported release on Windows with WSL 2; official docs list WSL 2.1.5 minimum and 8 GB RAM minimum, with virtualization enabled [W1, W2]. Docker Compose orchestrates local services (MongoDB, Hadoop, backend).
 - Java: align with selected Hadoop release (Java 17 for Hadoop 3.5.0 server-side requirement) [H1]. Smoke-tested image `apache/hadoop:3.5.0` runs Java 17.0.18.
 - Backend: **Node.js 22 LTS + TypeScript**, **Express 5** REST API, official **MongoDB Node.js driver**; **Vitest + Supertest** for tests. Proposed stack — application integration not implemented or smoke-tested. Pin exact dependency versions when implementation begins. One backend only; no microservices, Redis, Kafka, Kubernetes, or unnecessary ORM.
-- WebHDFS: proposed HDFS client, conditional on confirming the required upload and byte/checksum verification behavior by test; the Hadoop CLI adapter is the smoke-tested fallback. Unverified as of 2026-10-26.
+- WebHDFS: proposed HDFS client, **verified by test 2026-10-26** (upload + byte/checksum confirmation PASS via WebHDFS HTTP API; see `memory.md` §8e). Caveats: image ships with empty `core-site.xml`/`hdfs-site.xml`, so `fs.defaultFS`, `dfs.namenode.http-address`, and `dfs.webhdfs.enabled=true` must be configured before the NameNode starts; the backend must pass `?user.name=hadoop` (or run as `hadoop`) for write permission; CREATE/OPEN redirects target the datanode by container hostname. The Hadoop CLI adapter remains the smoke-tested fallback.
 
 **Do not claim all components are compatible merely because each is current.** The Phase 4 gate requires a clean-image smoke test: MongoDB health, HDFS put/get/delete, YARN job submission, and MapReduce output retrieval. Record image digests and licenses.
 
@@ -299,7 +299,7 @@ For each run record wall-clock elapsed milliseconds, input bytes, output bytes, 
 | AD-04 | Public dataset? | Start with synthetic fixtures; select a public dataset only after terms, privacy, schema, and size review. | No public dataset should enter the baseline until reviewed. |
 | AD-05 | Include Hive/Pig/Spark? | Optional extension only after core gates pass. | Does not block core acceptance. |
 | AD-06 | Dataset deletion with dependent runs? | Block by default; require explicit retention override and explain that provenance may become incomplete. | Avoid silently invalidating old reports. |
-| AD-07 | HDFS client: WebHDFS or Hadoop CLI? | WebHDFS only if upload + byte/checksum verification behavior is confirmed by test; CLI adapter is the smoke-tested fallback. | HDFS adapter implementation waits on WebHDFS confirmation or fallback selection. |
+| AD-07 | HDFS client: WebHDFS or Hadoop CLI? | WebHDFS confirmed by test 2026-10-26; configure `fs.defaultFS`/HTTP-bind/`dfs.webhdfs.enabled=true` and use `?user.name=hadoop` for writes; CLI adapter remains smoke-tested fallback. | Adapter implementation must address the config and datanode-redirect caveats before selecting WebHDFS. |
 
 ## 11. Architecture acceptance gate
 

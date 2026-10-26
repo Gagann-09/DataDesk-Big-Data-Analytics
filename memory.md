@@ -167,8 +167,27 @@ No images, volumes, or other containers pruned. No backend implemented. No long-
 - MongoDB `mongo:7` on 127.0.0.1:27017 (digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7): mongosh ping, insert, read, delete, verify-delete all PASS; container removed with `docker rm -f` (§8c).
 - Hadoop `apache/hadoop:3.5.0` (digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12; Java 17.0.18): NameNode/DataNode/ResourceManager/NodeManager running; HDFS mkdir/put/list/get/delete PASS with byte-identical get verification; genuine MapReduce wordcount via YARN PASS (`hello 3, world 3, hadoop 1, test 1`, `_SUCCESS` present); HDFS test data cleaned; container removed with `docker rm -f` (§8d).
 
+### WebHDFS compatibility test — verified (2026-10-26)
+
+**Environment:** disposable container `datadesk-webhdfs-test`, image `apache/hadoop:3.5.0` digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12, NameNode HTTP + DataNode HTTP bound to `127.0.0.1` only (ports 50070/50075), container removed with `docker rm -f` after test; unrelated containers untouched.
+
+**Configuration required (image default is empty):** `core-site.xml` `fs.defaultFS=hdfs://localhost:9000`; `hdfs-site.xml` `dfs.namenode.rpc-address=localhost:9000`, `dfs.namenode.http-address=0.0.0.0:50070`, `dfs.namenode.http-bind-host=0.0.0.0`, `dfs.datanode.http-bind-host=0.0.0.0`, `dfs.webhdfs.enabled=true`. Without `fs.defaultFS` the NameNode fails to start (`file:///` has no authority).
+
+**Test flow (all WebHDFS HTTP API, run from inside the container so datanode redirect addresses resolve; user `?user.name=hadoop` because the container OS user `dr.who` lacks WRITE on `/`):**
+1. `GET` `dfs.webhdfs.enabled` → `true` (reachable).
+2. `PUT /webhdfs/v1/datadesk/webhdfs-test?op=MKDIRS&user.name=hadoop` → HTTP 200 `{"boolean":true}` (directory created under `/datadesk/`).
+3. `PUT .../hello.txt?op=CREATE&overwrite=true&user.name=hadoop` → HTTP 307 redirect to datanode `http://0576234225be:9864/webhdfs/v1/...?op=CREATE...`; `PUT -T /tmp/hello.txt` to redirect → HTTP 201 `Created`, location `hdfs://localhost:9000/datadesk/webhdfs-test/hello.txt`.
+4. `GET .../hello.txt?op=OPEN&user.name=hadoop` (follow redirect) → downloaded file SHA-256 `c45bf4c918fd2e8310d58a5704ab1d7eded1292018b2a0b6fdfba017634c15d8` equals locally computed SHA-256 `c45bf4c918fd2e8310d58a5704ab1d7eded1292018b2a0b6fdfba017634c15d8`; `cmp` byte-compare = MATCH (48 bytes).
+5. `GET ...?op=LISTSTATUS&user.name=hadoop` → file listed (length 48, owner `hadoop`, type `FILE`).
+6. `DELETE .../hello.txt?op=DELETE&user.name=hadoop` → HTTP 200 `{"boolean":true}`.
+7. `DELETE ...?op=DELETE&recursive=true&user.name=hadoop` → HTTP 200 `{"boolean":true}`.
+8. `GET ...?op=GETFILESTATUS&user.name=hadoop` → HTTP 404 `FileNotFoundException` ("File does not exist: /datadesk/webhdfs-test").
+
+**Result:** WebHDFS safely performs the complete required flow (enabled check, mkdir under `/datadesk/`, HTTP upload, byte-exact read-back with independent SHA-256, list, delete file, delete directory). **CONFIRMED** as a viable HDFS client.
+
+**Caveats (operational, not a blocker):** (a) image ships with empty `core-site.xml`/`hdfs-site.xml`, so `fs.defaultFS` and HTTP bind addresses must be configured before the NameNode starts; (b) WebHDFS defaults to the calling OS user — the backend must run as a user with `/datadesk/` write permission or pass `?user.name=`; (c) the CREATE/OPEN redirect targets the datanode by container hostname, reachable from inside the container network; a host-based backend calling via published ports needs the datanode data port mapped or a reverse proxy. The Hadoop CLI adapter remains the documented fallback and is unchanged.
+
 **Untested / not implemented (application integration — do not claim as verified):**
-- WebHDFS upload and byte/checksum verification behavior — not confirmed; WebHDFS is a conditional choice only, with the smoke-tested Hadoop CLI adapter as fallback.
 - Node.js 22 LTS + TypeScript + Express 5 backend — not implemented, not smoke-tested as a service stack.
 - Official MongoDB Node.js driver usage in application code — not implemented.
 - Docker Compose multi-service startup and persistence across restart — not verified (P4 restart-persistence check pending).
@@ -191,7 +210,7 @@ No application code was written, no dependencies were installed, and no services
 | Backend stack: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver, Vitest + Supertest | Proposed | Lightweight single-backend baseline per rules.md §5; no microservices/Redis/Kafka/K8s/ORM; pin versions at implementation. Application integration not implemented or smoke-tested. |
 | MongoDB image: `mongo:7` digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7 | Verified (2026-10-26, §8c) | Official image; insert/read/delete/verify-delete on localhost:27017 all PASS; container removed after test. |
 | Hadoop image: `apache/hadoop:3.5.0` digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | Verified (2026-10-26, §8d) | Official ASF image, Apache 2.0, Java 17.0.18; daemons, HDFS CLI CRUD, and MapReduce wordcount via YARN PASS; container removed after test. |
-| WebHDFS as HDFS client | Proposed / unverified | Use only if upload + byte/checksum verification behavior confirmed by test; CLI adapter is verified fallback. |
+| WebHDFS as HDFS client | Verified with caveats (2026-10-26, §8e) | Upload + byte/checksum verification confirmed via WebHDFS HTTP API; requires `fs.defaultFS`/HTTP-bind config, `?user.name=hadoop` for write permission, and datanode redirect reachability. CLI adapter remains the documented fallback. |
 
 ## 10. Unresolved questions
 
@@ -201,7 +220,7 @@ No application code was written, no dependencies were installed, and no services
 4. Which public dataset has a clear reuse license and useful group/count analytics?
 5. Which 3–5 comparable workflow/provenance platforms are closest to the proposed student UX?
 6. Does a literature search reveal a directly comparable integrated workspace that makes the current contribution redundant?
-7. WebHDFS upload + byte/checksum verification behavior — unconfirmed. Conditional choice only; Hadoop CLI adapter is the verified fallback pending a WebHDFS confirmation test.
+7. WebHDFS upload + byte/checksum verification behavior — ANSWERED (2026-10-26, §8e): CONFIRMED via WebHDFS HTTP API (mkdir, upload, byte-exact SHA-256 read-back, list, delete). Requires `fs.defaultFS`/HTTP-bind config, `?user.name=hadoop` for write permission, and datanode redirect reachability. CLI adapter remains the documented fallback.
 
 ## 11. Current progress
 
@@ -209,7 +228,7 @@ No application code was written, no dependencies were installed, and no services
 - Phase 0 hardware audit: complete — Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1 daemon reachable earlier. Virtualization caveat recorded (WMI `VMMonitorModeExtensions` reads `False` on AMD; ambiguous, inferred from prior WSL 2/Docker Linux operation).
 - Phase 1: initial mixed bibliography and provisional gap drafted; full peer-reviewed literature review and comparable-system search remain pending.
 - Phase 4 smoke tests (2026-10-26, disposable containers only): Docker daemon + `alpine:3.20` PASS (§8b); MongoDB `mongo:7` CRUD PASS (§8c); Hadoop `apache/hadoop:3.5.0` daemons + HDFS CLI CRUD + MapReduce wordcount PASS (§8d). Images pinned by digest. Container restart-persistence check still pending.
-- Backend stack proposed: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver with MongoDB 7; Vitest + Supertest for tests; Docker Compose for local services; WebHDFS conditional/unverified (CLI adapter fallback verified). Application integration NOT implemented, NOT smoke-tested.
+- Backend stack proposed: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver with MongoDB 7; Vitest + Supertest for tests; Docker Compose for local services; WebHDFS verified with caveats (2026-10-26, §8e) — CLI adapter retained as fallback. Application integration NOT implemented, NOT smoke-tested.
 - Phases 2–3, 5: specification drafting continues in the six files.
 - Application implementation: **not started**. No code written, no dependencies installed, no services started beyond disposable smoke-test containers (all removed after testing).
 
