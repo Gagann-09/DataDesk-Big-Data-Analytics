@@ -115,6 +115,20 @@ Read-only disposable-container verification (no MongoDB, no Hadoop, no applicati
 - Output: smoke-ok; container exited 0; removed by --rm; confirmed absent in `docker ps -a` — PASS
 - No images, volumes, or other containers pruned or touched. Unrelated pre-existing containers (neuroscan_*, synth_patient_api) left untouched.
 
+## 8c. MongoDB smoke test results (2026-10-26)
+
+Disposable-container verification using official image (no Hadoop, no application code):
+
+- docker info: Server=29.9.2 OS=linux Arch=x86_64 Containers=4 Running=0 — PASS
+- Image: docker.io/library/mongo:7, digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7
+- Container: datadesk-mongo-smoke-test, bound to 127.0.0.1:27017 (localhost only)
+- Readiness: mongosh ping succeeded on attempt 1 — PASS
+- Insert (db datadesk_smoke_test, collection smoke_test): acknowledged:true, insertedId ObjectId('6adf0c9f3dc90845b5119019') — PASS
+- Read: document returned matching testId 'datadesk-smoke' — PASS
+- Delete: acknowledged:true, deletedCount:1 — PASS
+- Verify deletion: findOne returned null — PASS
+- Cleanup: docker rm -f datadesk-mongo-smoke-test; confirmed absent in docker ps -a; unrelated containers untouched — PASS
+
 ## 9. Decisions log
 
 | Decision | Status | Rationale |

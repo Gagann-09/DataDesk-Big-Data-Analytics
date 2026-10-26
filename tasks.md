@@ -30,6 +30,7 @@
 - [x] Ran `wsl --version`, `docker version`, `docker compose version`, and `docker info` from PowerShell.
 - [x] Confirm Linux containers can start and stop. — PASS (2026-10-26): ran pinned `alpine:3.20` container `docker run --rm --name datadesk-smoke-test alpine:3.20 sh -c "echo smoke-ok && exit 0"`; output `smoke-ok`; container exited 0; `--rm` removed it; confirmed absent in `docker ps -a`.
 - [x] Estimated disk headroom: ~64.6 GB free on C: — sufficient for baseline planning.
+- [x] MongoDB smoke test — PASS (2026-10-26): started pinned `mongo:7` (digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7) on localhost:27017; insert/read/delete/verify-delete of one test document in `datadesk_smoke_test.smoke_test` all succeeded; container removed with `docker rm -f`; unrelated containers untouched.
 
 Verified results:
 - OS: Windows 10.0.26300.9711
