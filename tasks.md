@@ -91,20 +91,27 @@ Verified results:
 ## Phase 4 — Technical architecture and Windows deployment verification
 
 ### P4.1 Version/image compatibility spike (disposable environment only)
-- [ ] Verify supported Windows version, WSL 2, virtualization, and Docker Desktop licensing for intended use.
-- [x] Choose exact Hadoop image/release, Java runtime: `apache/hadoop:3.5.0` (Java 17.0.18) selected after provenance/license review — PASS. MongoDB Community image and frontend/backend runtime not yet chosen (deferred; no image selected without evidence).
-- [ ] Record licenses, image publisher, tags, digests, release notes, and compatibility evidence.
-- [ ] Run MongoDB health check and create/read/delete a test record.
-- [x] Run HDFS mkdir, put, list, get, delete — PASS (content verified identical on get via diff; equivalent to checksum verification for this disposable test).
-- [x] Execute a real MapReduce word-count job via YARN; verify output — PASS (hadoop-mapreduce-examples-3.5.0.jar wordcount; output `hello 3, world 3, hadoop 1, test 1`, `_SUCCESS` present).
-- [ ] Restart containers and verify intended persistence.
+- [x] Verify supported Windows version, WSL 2, virtualization, and Docker Desktop licensing for intended use — host/hardware recorded in `memory.md` §8a; Docker Desktop 29.9.2 / Compose v5.6.1; virtualization caveat recorded (WMI ambiguous on AMD, inferred from prior WSL 2/Docker Linux operation).
+- [x] Choose exact Hadoop image/release, Java runtime: `apache/hadoop:3.5.0` (Java 17.0.18) selected after provenance/license review — PASS (image digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12; license Apache 2.0; publisher The Apache Software Foundation; evidence in `memory.md` §8d).
+- [x] MongoDB image chosen: `mongo:7` — PASS (digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7; insert/read/delete/verify-delete verified on localhost:27017; evidence in `memory.md` §8c).
+- [x] Record licenses, image publisher, tags, digests, release notes, and compatibility evidence — recorded in `memory.md` §8b–§8d.
+- [x] Run MongoDB health check and create/read/delete a test record — PASS (see `memory.md` §8c).
+- [x] Run HDFS mkdir, put, list, get, delete — PASS (content verified identical on get via diff; equivalent to checksum verification for this disposable test; see `memory.md` §8d).
+- [x] Execute a real MapReduce word-count job via YARN; verify output — PASS (hadoop-mapreduce-examples-3.5.0.jar wordcount; output `hello 3, world 3, hadoop 1, test 1`, `_SUCCESS` present; see `memory.md` §8d).
+- [ ] Restart containers and verify intended persistence — pending.
 
 ### P4.2 Operational safety
 - [ ] Test service unavailability, job timeout, nonzero exit, output missing, and interrupted upload.
 - [ ] Verify all host ports bind to loopback unless a specific local-only exception is justified.
 - [ ] Confirm path guard rejects traversal and paths outside `/datadesk/`.
 
-**Gate P4:** a fresh checkout can run the documented smoke test; no unverified compatibility claims remain; chosen images are pinned. If this fails, stop and revise architecture before implementation.
+### P4.3 Backend stack decision (proposed after Phase 4 evidence)
+- Chosen baseline: Node.js 22 LTS + TypeScript; Express 5 REST API; official MongoDB Node.js driver with MongoDB 7; Apache Hadoop 3.5.0 (image `apache/hadoop:3.5.0`, digest pinned); Docker Compose for local services; Vitest + Supertest for tests.
+- Constraints: one backend; no microservices, Redis, Kafka, Kubernetes, or unnecessary ORM; backend is the only layer orchestrating MongoDB/HDFS/Hadoop (rules.md §5).
+- Conditional: WebHDFS for the HDFS adapter only if required upload and byte/checksum verification behavior is confirmed by test; Hadoop CLI adapter is the smoke-tested fallback.
+- Status: **proposed**. Application integration not implemented, not smoke-tested, not started. Pin exact dependency versions at implementation (Phase 5 / I1); never `latest`.
+
+**Gate P4:** a fresh checkout can run the documented smoke test; chosen images are pinned; no unverified compatibility claims remain for images. The proposed backend stack is not smoke-tested as a service stack and must not be claimed as verified.
 
 ## Phase 5 — Directory structure, implementation plan, and test strategy
 
@@ -112,6 +119,7 @@ Verified results:
 - [ ] Create repository layout from the accepted Architecture.md.
 - [ ] Keep frontend, backend, Hadoop jobs, deployment, fixtures, docs, and tests logically separated without splitting into microservices.
 - [ ] Add `.env.example`, Compose file, pinned dependencies, license inventory, and ignore rules.
+- [ ] Document pinned baseline stack in the repository: Node.js 22 LTS + TypeScript, Express 5, official MongoDB Node.js driver, MongoDB 7, apache/hadoop:3.5.0 (digest pinned), mongo:7 (digest pinned), Docker Compose, Vitest + Supertest. Pin exact versions at implementation; never `latest`.
 
 ### P5.2 Define test pyramid
 - [ ] Unit tests: parser, checksum, canonicalization, path guard, state transitions, job parameter validation.

@@ -256,13 +256,21 @@ A run is successful only when the process exits successfully and required output
 - Bind-mount source code from the WSL Linux filesystem where practical; avoid high-volume builds on `/mnt/c` if filesystem performance becomes a bottleneck.
 
 ### Version candidates (must be pinned after compatibility smoke tests)
-- Hadoop **3.5.0**: official Apache release page identifies it as the first stable 3.5 line release, dated 2026-04-02; server side requires Java 17, client supports Java 17/21 [H1, H2].
-- MongoDB Community Server: choose a currently supported stable major and pin an exact patch tag/digest after checking the official release and image docs. Use aggregation pipeline, not legacy MapReduce [M1].
-- Docker Desktop: current supported release on Windows with WSL 2; official docs list WSL 2.1.5 minimum and 8 GB RAM minimum, with virtualization enabled [W1, W2].
-- Java: align with selected Hadoop release (Java 17 for Hadoop 3.5.0 server-side requirement) [H1].
-- Frontend/backend language and framework: choose one maintained stack after Phase 4 compatibility spike; avoid adding a separate worker service if backend job orchestration is sufficient.
+- Hadoop **3.5.0**: official Apache release page identifies it as the first stable 3.5 line release, dated 2026-04-02; server side requires Java 17, client supports Java 17/21 [H1, H2]. Image `apache/hadoop:3.5.0` smoke-tested on 2026-10-26 (digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12).
+- MongoDB Community Server **7**: official `mongo:7` image smoke-tested on 2026-10-26 (digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7); insert/read/delete verified. Pin exact tag/digest. Use aggregation pipeline, not legacy MapReduce [M1].
+- Docker Desktop: current supported release on Windows with WSL 2; official docs list WSL 2.1.5 minimum and 8 GB RAM minimum, with virtualization enabled [W1, W2]. Docker Compose orchestrates local services (MongoDB, Hadoop, backend).
+- Java: align with selected Hadoop release (Java 17 for Hadoop 3.5.0 server-side requirement) [H1]. Smoke-tested image `apache/hadoop:3.5.0` runs Java 17.0.18.
+- Backend: **Node.js 22 LTS + TypeScript**, **Express 5** REST API, official **MongoDB Node.js driver**; **Vitest + Supertest** for tests. Proposed stack — application integration not implemented or smoke-tested. Pin exact dependency versions when implementation begins. One backend only; no microservices, Redis, Kafka, Kubernetes, or unnecessary ORM.
+- WebHDFS: proposed HDFS client, conditional on confirming the required upload and byte/checksum verification behavior by test; the Hadoop CLI adapter is the smoke-tested fallback. Unverified as of 2026-10-26.
 
 **Do not claim all components are compatible merely because each is current.** The Phase 4 gate requires a clean-image smoke test: MongoDB health, HDFS put/get/delete, YARN job submission, and MapReduce output retrieval. Record image digests and licenses.
+
+### Stack constraints (lightweight baseline)
+- One backend service only; no microservices.
+- No Redis, Kafka, or Kubernetes.
+- No ORM; the official MongoDB Node.js driver is the data-access layer.
+- The backend is the only layer allowed to orchestrate MongoDB/HDFS/Hadoop operations (rules.md §5).
+- Pin dependencies and container images by exact version and preferably digest when implementation begins; never `latest`.
 
 ## 8. Security and safety controls
 
@@ -287,10 +295,11 @@ For each run record wall-clock elapsed milliseconds, input bytes, output bytes, 
 |---|---|---|---|
 | AD-01 | Available host RAM/CPU/disk? | Minimum 8 GB RAM to start; 16 GB preferred for smoother local stack; verify actual hardware before finalizing. | May require reducing services/data sizes or stop the project until resources are available. |
 | AD-02 | Hadoop image choice and license? | Select after provenance, maintenance, architecture, and license review; pin digest. | Cannot finalize deployment or claim reproducible setup. |
-| AD-03 | Backend language/framework? | Choose the simplest maintained stack the developer can test; keep one backend. | Directory layout and test commands remain provisional. |
+| AD-03 | Backend language/framework? | **Proposed:** Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver; Vitest + Supertest for tests. One backend; pin exact versions at implementation. | Not implemented or smoke-tested as a stack; directory layout and test commands remain provisional. |
 | AD-04 | Public dataset? | Start with synthetic fixtures; select a public dataset only after terms, privacy, schema, and size review. | No public dataset should enter the baseline until reviewed. |
 | AD-05 | Include Hive/Pig/Spark? | Optional extension only after core gates pass. | Does not block core acceptance. |
 | AD-06 | Dataset deletion with dependent runs? | Block by default; require explicit retention override and explain that provenance may become incomplete. | Avoid silently invalidating old reports. |
+| AD-07 | HDFS client: WebHDFS or Hadoop CLI? | WebHDFS only if upload + byte/checksum verification behavior is confirmed by test; CLI adapter is the smoke-tested fallback. | HDFS adapter implementation waits on WebHDFS confirmation or fallback selection. |
 
 ## 11. Architecture acceptance gate
 
