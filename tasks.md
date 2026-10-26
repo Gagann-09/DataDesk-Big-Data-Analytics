@@ -98,20 +98,21 @@ Verified results:
 - [x] Run MongoDB health check and create/read/delete a test record — PASS (see `memory.md` §8c).
 - [x] Run HDFS mkdir, put, list, get, delete — PASS (content verified identical on get via diff; equivalent to checksum verification for this disposable test; see `memory.md` §8d).
 - [x] Execute a real MapReduce word-count job via YARN; verify output — PASS (hadoop-mapreduce-examples-3.5.0.jar wordcount; output `hello 3, world 3, hadoop 1, test 1`, `_SUCCESS` present; see `memory.md` §8d).
-- [ ] Restart containers and verify intended persistence — pending.
+- [x] Restart containers and verify intended persistence — PASS (2026-10-26): `datadesk-compose-test` (mongo:7 digest sha256:c53852c0…) with named volume `datadesk-smoke-volume`; inserted test record, `docker compose restart`, record persisted with same ObjectId `6adf188c1b2b6798478b83ac`; `docker compose down -v` removed container, network, and volume; evidence in `memory.md` §8g.
 
-### P4.2 Operational safety
-- [ ] Test service unavailability, job timeout, nonzero exit, output missing, and interrupted upload.
-- [ ] Verify all host ports bind to loopback unless a specific local-only exception is justified.
-- [ ] Confirm path guard rejects traversal and paths outside `/datadesk/`.
+### P4.2 Operational safety (NOT MEASURED — requires backend application code)
+- Test service unavailability, job timeout, nonzero exit, output missing, and interrupted upload. — **NOT MEASURED** (backend not implemented; Phase 5+).
+- Verify all host ports bind to loopback unless a specific local-only exception is justified. — **NOT MEASURED** (backend not implemented; Phase 5+).
+- Confirm path guard rejects traversal and paths outside `/datadesk/`. — **NOT MEASURED** (backend not implemented; Phase 5+).
 
-### P4.3 Backend stack decision (proposed after Phase 4 evidence)
+### P4.3 Backend stack decision (evidence-based after Phase 4 smoke tests)
 - Chosen baseline: Node.js 22 LTS + TypeScript; Express 5 REST API; official MongoDB Node.js driver with MongoDB 7; Apache Hadoop 3.5.0 (image `apache/hadoop:3.5.0`, digest pinned); Docker Compose for local services; Vitest + Supertest for tests.
 - Constraints: one backend; no microservices, Redis, Kafka, Kubernetes, or unnecessary ORM; backend is the only layer orchestrating MongoDB/HDFS/Hadoop (rules.md §5).
 - HDFS client decision (evidence-based): WebHDFS upload + byte/checksum verification behavior **confirmed by test** 2026-10-26 (§8e in `memory.md`): MKDIRS under `/datadesk/`, HTTP PUT upload, byte-exact read-back with independent SHA-256 (MATCH), LISTSTATUS, DELETE file, DELETE directory recursive — all PASS via WebHDFS HTTP API. Caveats: image ships with empty `core-site.xml`/`hdfs-site.xml` (must configure `fs.defaultFS`, HTTP bind addresses, `dfs.webhdfs.enabled=true` before the NameNode starts); WebHDFS defaults to the calling OS user, so the backend must pass `?user.name=hadoop` or run as a user with `/datadesk/` write permission; CREATE/OPEN redirects target the datanode by container hostname (reachable from inside the container network; a host-based backend needs datanode ports mapped or a proxy). Hadoop CLI adapter remains the smoke-tested fallback.
-- Status: **proposed**. Application integration not implemented, not smoke-tested, not started. Pin exact dependency versions at implementation (Phase 5 / I1); never `latest`.
+- Node.js 22 + Express 5 smoke test — **PASS** 2026-10-26 (§8f in `memory.md`): disposable `node:22` container running Express 5; `GET /api/health` → `HTTP/1.1 200 OK` `{"status":"ok","service":"datadesk-smoke"}`, bound to `127.0.0.1` only. Container removed with `--rm` after test. This is a service smoke test only; DataDesk application integration is not implemented.
+- Status: **proposed**. Application integration not implemented, not started. Pin exact dependency versions at implementation (Phase 5 / I1); never `latest`.
 
-**Gate P4:** a fresh checkout can run the documented smoke test; chosen images are pinned; no unverified compatibility claims remain for images (Hadoop `apache/hadoop:3.5.0` and MongoDB `mongo:7` verified by digest; WebHDFS verified with documented caveats). The proposed backend stack is not smoke-tested as a service stack and must not be claimed as verified.
+**Gate P4:** a fresh checkout can run the documented smoke test; chosen images are pinned; no unverified compatibility claims remain for images (Hadoop `apache/hadoop:3.5.0` and MongoDB `mongo:7` verified by digest; WebHDFS verified with documented caveats). Node.js 22 + Express 5 smoke-tested as a disposable service (HTTP 200 on GET /api/health) and Compose restart persistence verified. P4.2 operational-safety items require backend application code and are **NOT MEASURED** pending implementation (Phase 5+).
 
 ## Phase 5 — Directory structure, implementation plan, and test strategy
 

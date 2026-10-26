@@ -187,14 +187,35 @@ No images, volumes, or other containers pruned. No backend implemented. No long-
 
 **Caveats (operational, not a blocker):** (a) image ships with empty `core-site.xml`/`hdfs-site.xml`, so `fs.defaultFS` and HTTP bind addresses must be configured before the NameNode starts; (b) WebHDFS defaults to the calling OS user — the backend must run as a user with `/datadesk/` write permission or pass `?user.name=`; (c) the CREATE/OPEN redirect targets the datanode by container hostname, reachable from inside the container network; a host-based backend calling via published ports needs the datanode data port mapped or a reverse proxy. The Hadoop CLI adapter remains the documented fallback and is unchanged.
 
+### Node.js 22 + Express 5 smoke test — verified (2026-10-26)
+
+**Environment:** disposable container `datadesk-node-smoke`, image `node:22` (digest sha256:63538dfe497cc29dfafdda25ada09b46db68a3f4cc205abf1f5d6bf0913f3384), Express 5 (`express@5.0.0`), bound to `127.0.0.1` only (published port `127.0.0.1:3456->3456/tcp`), container removed with `--rm` after test; unrelated containers untouched.
+
+**Test flow:**
+- Minimal smoke API (`server.js`, not DataDesk application code): `GET /api/health` returns `{"status":"ok","service":"datadesk-smoke"}`.
+- `curl -s -i http://127.0.0.1:3456/api/health` (from inside the container) → `HTTP/1.1 200 OK`, `X-Powered-By: Express`, body `{"status":"ok","service":"datadesk-smoke"}`.
+
+**Result:** Node.js 22 LTS + Express 5 can start as a disposable service and respond to a single health request on loopback only. **PASS** as a service smoke test; DataDesk application integration is not implemented.
+
+### Docker Compose restart persistence — verified (2026-10-26)
+
+**Environment:** disposable Compose project `datadesk-compose-test`, image `mongo:7` digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7, named volume `datadesk-smoke-volume`, MongoDB bound to `127.0.0.1:27018` only. Compose file and volume removed with `docker compose down -v` after test; unrelated containers/volumes untouched.
+
+**Test flow:**
+- `docker compose up -d` → container + named volume created.
+- `mongosh` insert into `datadesk_smoke_test.smoke_test`: `acknowledged: true`, `insertedId ObjectId('6adf188c1b2b6798478b83ac')`.
+- `docker compose restart` → container restarted.
+- `mongosh findOne({testId:'datadesk-compose-restart'})` → same ObjectId `6adf188c1b2b6798478b83ac`, same `createdAt`; record persisted across restart.
+- `docker compose down -v` → container, network, and named volume removed.
+
+**Result:** Compose multi-service startup and data persistence across a clean restart verified. **PASS**.
+
 **Untested / not implemented (application integration — do not claim as verified):**
-- Node.js 22 LTS + TypeScript + Express 5 backend — not implemented, not smoke-tested as a service stack.
 - Official MongoDB Node.js driver usage in application code — not implemented.
-- Docker Compose multi-service startup and persistence across restart — not verified (P4 restart-persistence check pending).
 - Vitest + Supertest tests — not written.
 - Any backend application integration with MongoDB, HDFS, or Hadoop — not started.
 
-No application code was written, no dependencies were installed, and no services were started beyond the disposable smoke-test containers above, all of which were removed after testing.
+No DataDesk application code was written, no repo dependencies were installed, and no services were started beyond the disposable smoke-test containers above, all of which were removed after testing.
 
 ## 9. Decisions log
 
@@ -207,7 +228,7 @@ No application code was written, no dependencies were installed, and no services
 | Provenance is a research hypothesis, not proven novelty | Accepted | General provenance is well established by W3C PROV and workflow research. |
 | Hive, Pig, Spark, ML are optional | Accepted | Keeps core feasible while acknowledging syllabus topics. |
 | No app implementation in this assignment | Accepted | User explicitly requires six-file specification first. |
-| Backend stack: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver, Vitest + Supertest | Proposed | Lightweight single-backend baseline per rules.md §5; no microservices/Redis/Kafka/K8s/ORM; pin versions at implementation. Application integration not implemented or smoke-tested. |
+| Backend stack: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver, Vitest + Supertest | Proposed (service smoke-tested) | Lightweight single-backend baseline per rules.md §5; no microservices/Redis/Kafka/K8s/ORM; pin versions at implementation. Express 5 service smoke-tested (HTTP 200 on GET /api/health, loopback-only); DataDesk application integration not implemented or started. |
 | MongoDB image: `mongo:7` digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7 | Verified (2026-10-26, §8c) | Official image; insert/read/delete/verify-delete on localhost:27017 all PASS; container removed after test. |
 | Hadoop image: `apache/hadoop:3.5.0` digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | Verified (2026-10-26, §8d) | Official ASF image, Apache 2.0, Java 17.0.18; daemons, HDFS CLI CRUD, and MapReduce wordcount via YARN PASS; container removed after test. |
 | WebHDFS as HDFS client | Verified with caveats (2026-10-26, §8e) | Upload + byte/checksum verification confirmed via WebHDFS HTTP API; requires `fs.defaultFS`/HTTP-bind config, `?user.name=hadoop` for write permission, and datanode redirect reachability. CLI adapter remains the documented fallback. |
@@ -216,7 +237,7 @@ No application code was written, no dependencies were installed, and no services
 
 1. What are the actual Windows edition/build, CPU, RAM, free disk, WSL version, and Docker Desktop version? — PARTIALLY ANSWERED: Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1. Virtualization caveat: WMI `VMMonitorModeExtensions` reads `False` on this AMD CPU (ambiguous, not conclusive); availability inferred from prior successful WSL 2/Docker Linux operation in Step 0, not re-verified in this session.
 2. Which maintained Hadoop container image has acceptable license, provenance, update cadence, and Java compatibility? — ANSWERED: `apache/hadoop:3.5.0`, digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12, Apache License 2.0, Java 17.0.18, verified by smoke test 2026-10-26 (§8d).
-3. Which frontend/backend language is most maintainable for the developer and testing workflow? — ANSWERED (proposed, not implemented): Node.js 22 LTS + TypeScript with Express 5 REST API and official MongoDB Node.js driver; Vitest + Supertest for tests. Not smoke-tested as a service stack; application integration not started.
+3. Which frontend/backend language is most maintainable for the developer and testing workflow? — ANSWERED (proposed, service smoke-tested): Node.js 22 LTS + TypeScript with Express 5 REST API and official MongoDB Node.js driver; Vitest + Supertest for tests. Express 5 service smoke-tested (HTTP 200 on GET /api/health, loopback-only); DataDesk application integration not started.
 4. Which public dataset has a clear reuse license and useful group/count analytics?
 5. Which 3–5 comparable workflow/provenance platforms are closest to the proposed student UX?
 6. Does a literature search reveal a directly comparable integrated workspace that makes the current contribution redundant?
@@ -227,8 +248,8 @@ No application code was written, no dependencies were installed, and no services
 - Phase 0 source audit: syllabus located and fully read; mandatory activities extracted.
 - Phase 0 hardware audit: complete — Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1 daemon reachable earlier. Virtualization caveat recorded (WMI `VMMonitorModeExtensions` reads `False` on AMD; ambiguous, inferred from prior WSL 2/Docker Linux operation).
 - Phase 1: initial mixed bibliography and provisional gap drafted; full peer-reviewed literature review and comparable-system search remain pending.
-- Phase 4 smoke tests (2026-10-26, disposable containers only): Docker daemon + `alpine:3.20` PASS (§8b); MongoDB `mongo:7` CRUD PASS (§8c); Hadoop `apache/hadoop:3.5.0` daemons + HDFS CLI CRUD + MapReduce wordcount PASS (§8d). Images pinned by digest. Container restart-persistence check still pending.
-- Backend stack proposed: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver with MongoDB 7; Vitest + Supertest for tests; Docker Compose for local services; WebHDFS verified with caveats (2026-10-26, §8e) — CLI adapter retained as fallback. Application integration NOT implemented, NOT smoke-tested.
+- Phase 4 smoke tests (2026-10-26, disposable containers only): Docker daemon + `alpine:3.20` PASS (§8b); MongoDB `mongo:7` CRUD PASS (§8c); Hadoop `apache/hadoop:3.5.0` daemons + HDFS CLI CRUD + MapReduce wordcount PASS (§8d); WebHDFS full flow PASS (§8e); Node.js 22 + Express 5 service smoke test PASS (§8f, HTTP 200 on GET /api/health, loopback-only); Compose restart persistence PASS (§8g, record survived `docker compose restart`). Images pinned by digest.
+- Backend stack proposed: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver with MongoDB 7; Vitest + Supertest for tests; Docker Compose for local services; WebHDFS verified with caveats (§8e) — CLI adapter retained as fallback. DataDesk application integration NOT implemented, NOT started.
 - Phases 2–3, 5: specification drafting continues in the six files.
 - Application implementation: **not started**. No code written, no dependencies installed, no services started beyond disposable smoke-test containers (all removed after testing).
 
