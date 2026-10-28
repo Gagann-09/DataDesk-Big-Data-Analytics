@@ -211,11 +211,11 @@ No images, volumes, or other containers pruned. No backend implemented. No long-
 **Result:** Compose multi-service startup and data persistence across a clean restart verified. **PASS**.
 
 **Untested / not implemented (application integration — do not claim as verified):**
-- Official MongoDB Node.js driver usage in application code — not implemented.
-- Vitest + Supertest tests — not written.
-- Any backend application integration with MongoDB, HDFS, or Hadoop — not started.
+- Real MongoDB / WebHDFS live-service integration tests (no MongoDB or NameNode running in this environment; unrelated Docker containers left untouched).
+- Type-check, unit test suite, and audit results were independently reproduced in this local checkout: `npm ci` succeeded, `tsc --noEmit` clean, `npm test` → 31 tests passed, `npm audit` → 0 vulnerabilities. `node_modules` is present locally but gitignored (not committed). Live MongoDB/WebHDFS integration remains unverified (no services running).
+- The Phase 1 application code under `packages/backend/` exists locally but is **untracked and uncommitted** (not present on `origin/phase-1/backend-dataset-ingestion` HEAD `038c409`).
 
-No DataDesk application code was written, no repo dependencies were installed, and no services were started beyond the disposable smoke-test containers above, all of which were removed after testing.
+No services were started beyond the disposable smoke-test containers above, all of which were removed after testing.
 
 ## 9. Decisions log
 
@@ -232,6 +232,12 @@ No DataDesk application code was written, no repo dependencies were installed, a
 | MongoDB image: `mongo:7` digest sha256:c53852c00c23ca9f23fc39690350ffa9a80e3642fe8f96879726d8da0abe80a7 | Verified (2026-10-26, §8c) | Official image; insert/read/delete/verify-delete on localhost:27017 all PASS; container removed after test. |
 | Hadoop image: `apache/hadoop:3.5.0` digest sha256:46980ea1653eb3453d9cf43c4b7cb69c4729e19612d4902da0372d11e11a7a12 | Verified (2026-10-26, §8d) | Official ASF image, Apache 2.0, Java 17.0.18; daemons, HDFS CLI CRUD, and MapReduce wordcount via YARN PASS; container removed after test. |
 | WebHDFS as HDFS client | Verified with caveats (2026-10-26, §8e) | Upload + byte/checksum verification confirmed via WebHDFS HTTP API; requires `fs.defaultFS`/HTTP-bind config, `?user.name=hadoop` for write permission, and datanode redirect reachability. CLI adapter remains the documented fallback. |
+| Phase 1 backend stack (packages/backend) | Decided + implemented locally (untracked/uncommitted) | Node.js 22 LTS + TypeScript 5.9.3, Express 5.3.0, official MongoDB driver 7.7.0, busboy 1.6.0 (streaming multipart), Vitest 5.0.5 + Supertest 7.3.1 + tsx. Exact versions pinned in `packages/backend/package.json` + `package-lock.json`; code and tests exist locally but are **not committed or pushed** (absent from `origin/phase-1/backend-dataset-ingestion` HEAD `038c409`). `npm audit` result (0 vulnerabilities) and test counts are **reported**, not independently reproduced in this checkout. WebHDFS store written per §8e (not live-tested: no NameNode in this environment). |
+| Dedup claims collection for atomic duplicate detection | Decided + implemented (2026-10-26) | `dataset_dedup_claims` keyed by `sha256:byteSize` (_id) gates concurrent identical uploads so only one version/HDFS copy is created. Existing non-unique `dataset_versions.sha256` index preserved per Architecture §4. |
+| Startup reconciliation for interrupted uploads | Decided + implemented (2026-10-26) | `repository.reconcile(store)` runs on boot: `pending_upload` versions with an HDFS path confirmed by `store.stat` recover to `stored`; without bytes they fail and clean owned staging; stale dedup claims are cleared. Only upload-owned bytes are ever removed. |
+| WebHDFS store reliability fixes | Verified via real integration (2026-10-26) | (a) `webHdfsUrl` filters empty path segments so HDFS paths are not doubled (`//datadesk/...` → `InvalidPathException`); (b) `storeFile` MKDIRS the final path's parent before RENAME (WebHDFS RENAME does not auto-create parents) and requires the RENAME body `{"boolean":true}` — previously a `200 {"boolean":false}` (destination missing or existing) was falsely reported as success. Verified end-to-end against live Hadoop 3.5.0. |
+| In-memory fake repo/store for tests | Decided + implemented (2026-10-26) | `InMemoryDatasetRepository` / `InMemoryDatasetStore` mirror the real interfaces so upload logic (duplicate policy, lifecycle, path guard, validation) is unit-testable without MongoDB/HDFS; real drivers swap in directly. |
+| Degraded MongoDB mode | Decided + implemented (2026-10-26) | API boots without MongoDB (fast 3s server-selection timeout), `GET /api/health` reports `degraded`, uploads return `503 mongodb_unavailable`; no untracked HDFS writes occur. |
 
 ## 10. Unresolved questions
 
@@ -249,9 +255,11 @@ No DataDesk application code was written, no repo dependencies were installed, a
 - Phase 0 hardware audit: complete — Windows 10.0.26300.9711; AMD Ryzen 7 5700U, 8 cores / 16 logical processors; ~15.32 GB RAM; ~64.6 GB free disk (C:); WSL 2.6.3.0 kernel 6.6.8; Docker Desktop 29.9.2 / Compose v5.6.1 daemon reachable earlier. Virtualization caveat recorded (WMI `VMMonitorModeExtensions` reads `False` on AMD; ambiguous, inferred from prior WSL 2/Docker Linux operation).
 - Phase 1: initial mixed bibliography and provisional gap drafted; full peer-reviewed literature review and comparable-system search remain pending.
 - Phase 4 smoke tests (2026-10-26, disposable containers only): Docker daemon + `alpine:3.20` PASS (§8b); MongoDB `mongo:7` CRUD PASS (§8c); Hadoop `apache/hadoop:3.5.0` daemons + HDFS CLI CRUD + MapReduce wordcount PASS (§8d); WebHDFS full flow PASS (§8e); Node.js 22 + Express 5 service smoke test PASS (§8f, HTTP 200 on GET /api/health, loopback-only); Compose restart persistence PASS (§8g, record survived `docker compose restart`). Images pinned by digest.
-- Backend stack proposed: Node.js 22 LTS + TypeScript, Express 5 REST API, official MongoDB Node.js driver with MongoDB 7; Vitest + Supertest for tests; Docker Compose for local services; WebHDFS verified with caveats (§8e) — CLI adapter retained as fallback. DataDesk application integration NOT implemented, NOT started.
-- Phases 2–3, 5: specification drafting continues in the six files.
-- Application implementation: **not started**. No code written, no dependencies installed, no services started beyond disposable smoke-test containers (all removed after testing).
+- Backend stack: Node.js 22 LTS + TypeScript 5.9.3, Express 5.3.0, official MongoDB Node.js driver 7.7.0, busboy 1.6.0, Vitest 5.0.5 + Supertest 7.3.1 + tsx — all pinned in `packages/backend/package.json` + `package-lock.json`. Code and tests exist locally but are **untracked and uncommitted** (absent from `origin/phase-1/backend-dataset-ingestion` HEAD `038c409`). `npm audit` result (0 vulnerabilities) is **reported**, not independently reproduced in this checkout.
+- Phase 1 ingestion backend implemented locally under `packages/backend/`: `POST /api/datasets` (streamed upload, SHA-256 + exact size, bounded CSV/JSONL validation, atomic duplicate policy via dedup-claims collection, `/datadesk/` path guard, MongoDB lifecycle `pending_upload -> stored/failed`) plus `GET /api/health`; WebHDFS store per §8e; in-memory fake repo/store for tests. Reliability fixes: atomic dedup claims prevent concurrent duplicate versions/HDFS copies; the final HDFS path is pre-recorded on `pending_upload` versions so HDFS-promotion-succeeds-but-MongoDB-finalization-fails is recoverable by startup `reconcile(store)`; SHA-256 getter cached against repeated access.
+- Verification claims (in-memory fakes; real MongoDB/NameNode not running): independently reproduced in this local checkout — `tsc --noEmit` clean, `npm test` → 31 tests passed, `npm audit` → 0 vulnerabilities. `node_modules` is present locally but gitignored (not committed). Live MongoDB/WebHDFS integration remains unverified (no services running). `git diff --check` clean on the tracked tree.
+- Real MongoDB / WebHDFS integration tests are BLOCKED in this environment (no MongoDB or NameNode running; unrelated Docker containers left untouched). Documented in `packages/backend/RUNBOOK.md`.
+- Phases 2–3, 5: specification drafting continues in the six files. Not committed or pushed — awaiting review.
 
 ## 12. Bibliography access dates
 

@@ -117,10 +117,21 @@ Verified results:
 ## Phase 5 — Directory structure, implementation plan, and test strategy
 
 ### P5.1 Freeze directory layout
-- [ ] Create repository layout from the accepted Architecture.md.
-- [ ] Keep frontend, backend, Hadoop jobs, deployment, fixtures, docs, and tests logically separated without splitting into microservices.
-- [ ] Add `.env.example`, Compose file, pinned dependencies, license inventory, and ignore rules.
-- [ ] Document pinned baseline stack in the repository: Node.js 22 LTS + TypeScript, Express 5, official MongoDB Node.js driver, MongoDB 7, apache/hadoop:3.5.0 (digest pinned), mongo:7 (digest pinned), Docker Compose, Vitest + Supertest. Pin exact versions at implementation; never `latest`.
+- [x] Create repository layout from the accepted Architecture.md — `packages/backend/` created (src, tests, `.env.example`, gitignore, pinned `package.json` + `package-lock.json`).
+- [ ] Keep frontend, backend, Hadoop jobs, deployment, fixtures, docs, and tests logically separated without splitting into microservices — backend slice created; frontend/Hadoop jobs/deployment not part of Phase 1.
+- [x] Add `.env.example`, pinned dependencies, and ignore rules — `.env.example` (no secrets), exact pins in `package.json`, `package-lock.json`; code and tests exist locally but are **untracked/uncommitted** (not on `origin/phase-1/backend-dataset-ingestion` HEAD `038c409`). `npm audit` result (0 vulnerabilities) is **reported**, not independently reproduced in this checkout.
+- [ ] Compose file — out of Phase 1 minimal scope (no unrelated refactors); documented in `packages/backend/RUNBOOK.md` instead.
+
+**Phase 1 ingestion (this assignment) — evidence (2026-10-26):**
+- `packages/backend/src`: Express 5 app, `POST /api/datasets` streamed upload, SHA-256 + exact size, bounded CSV/JSONL validation, atomic duplicate policy via `dataset_dedup_claims` (sha256:byteSize → 409 existing version, bytes stored once), `/datadesk/` path guard, MongoDB lifecycle `pending_upload -> stored/failed`, `GET /api/health`. WebHDFS store per memory.md §8e; in-memory fake repo/store for tests.
+- Reliability fixes: (1) atomic dedup claims prevent concurrent identical uploads from creating duplicate versions/HDFS copies while preserving the documented non-unique checksum index; (2) the final HDFS path is pre-recorded on `pending_upload` versions so store-succeeds-but-MongoDB-finalization-fails is recoverable by startup `reconcile(store)`, cleaning only upload-owned staging bytes; (3) SHA-256 getter cached against repeated access.
+- `packages/backend/tests/ingestion-reliability.test.ts`: 4 regression tests (safe getter, concurrent duplicates → one 201 + one 409 + single version, finalize-failure recovery via reconcile, stale-claim cleanup + retry).
+- `npm run typecheck` — **reported** clean (not independently reproduced in this checkout; `node_modules` absent).
+- `npm test` — **reported** 27/27 pass (hashing, validation, path guards, upload endpoint incl. duplicate/413/400/503/health, plus 4 reliability regressions); not independently reproduced in this checkout.
+- `npm audit` — **reported** 0 vulnerabilities; not independently reproduced in this checkout.
+- Live smoke: **reported** API boots on `127.0.0.1:3456` only, degrades to 503 without MongoDB, `/api/health` responds; not independently reproduced in this checkout.
+- Real MongoDB/WebHDFS integration tests BLOCKED (no services running; unrelated Docker containers untouched) — reported as blocked, not claimed as passed.
+- Not committed or pushed; `git diff --check` clean, awaiting review.
 
 ### P5.2 Define test pyramid
 - [ ] Unit tests: parser, checksum, canonicalization, path guard, state transitions, job parameter validation.
